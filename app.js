@@ -46,6 +46,7 @@ const state = {
   profile: {},
   activeView: "dashboard",
   planFilter: "week",
+  adminPlanFilter: "week",
   admin: { members: [], summary: [], logs: [], profiles: [] }
 };
 
@@ -81,6 +82,59 @@ function shortDate(dateStr) {
   if (!dateStr) return "-";
   const d = new Date(`${dateStr}T00:00:00`);
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function monthKey(dateStr) {
+  if (!dateStr) return "";
+  return String(dateStr).slice(0, 7);
+}
+
+function currentMonthKey() {
+  return today().slice(0, 7);
+}
+
+function monthLabel(key) {
+  if (!key) return "-";
+  const [year, month] = key.split("-");
+  return `${year}년 ${Number(month)}월`;
+}
+
+function monthlyMileageRows() {
+  const monthly = new Map();
+  state.logs.forEach((log) => {
+    const km = Number(log.actual_km || 0);
+    if (!log.log_date || km <= 0) return;
+    const key = monthKey(log.log_date);
+    const prev = monthly.get(key) || { month: key, km: 0, count: 0 };
+    prev.km += km;
+    prev.count += 1;
+    monthly.set(key, prev);
+  });
+  return [...monthly.values()].sort((a, b) => b.month.localeCompare(a.month));
+}
+
+function mileageForMonth(key = currentMonthKey()) {
+  return monthlyMileageRows().find((row) => row.month === key)?.km || 0;
+}
+
+function monthlyMileageHtml() {
+  const rows = monthlyMileageRows();
+  const currentKey = currentMonthKey();
+  if (!rows.length) return `<p class="empty">아직 월 마일리지로 집계할 기록이 없습니다.</p>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>월</th><th>마일리지</th><th>입력횟수</th></tr></thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr class="${row.month === currentKey ? "highlight-row" : ""}">
+              <td>${monthLabel(row.month)}${row.month === currentKey ? " <span class='mini-badge'>이번 달</span>" : ""}</td>
+              <td>${fmtNum(row.km, 1)} km</td>
+              <td>${row.count}회</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
 }
 
 function weekRange() {
@@ -235,6 +289,11 @@ function bindShellEvents() {
     }
   });
 
+  document.querySelector("#plan-date")?.addEventListener("change", (event) => {
+    const dayInput = document.querySelector("#plan-day-name");
+    if (dayInput && event.target.value) dayInput.value = dayNameFromDate(event.target.value);
+  });
+
   if (!globalClickBound) {
     document.addEventListener("click", handleGlobalClick);
     globalClickBound = true;
@@ -281,6 +340,32 @@ async function handleGlobalClick(event) {
 
     if (action === "admin-create-member") {
       await adminCreateMember(button);
+      return;
+    }
+
+    if (action === "admin-plan-filter") {
+      state.adminPlanFilter = button.dataset.filter || "week";
+      renderAdmin();
+      return;
+    }
+
+    if (action === "admin-open-plan-new") {
+      openPlanEditor(null);
+      return;
+    }
+
+    if (action === "admin-open-plan-edit") {
+      openPlanEditor(button.dataset.planId);
+      return;
+    }
+
+    if (action === "admin-save-plan") {
+      await adminSavePlan(button);
+      return;
+    }
+
+    if (action === "admin-delete-plan") {
+      await adminDeletePlan(button);
       return;
     }
 
@@ -340,10 +425,12 @@ function renderAll() {
 
 function renderDashboard() {
   const s = state.summary || {};
+  const thisMonthKm = mileageForMonth();
   const nextPlan = state.plan.find((item) => item.plan_date >= today() && Number(item.planned_km) > 0);
   document.querySelector("#view-dashboard").innerHTML = `
     <div class="kpi-grid">
       ${kpiCard("누적거리", `${fmtNum(s.total_km, 1)} km`, "실제 입력한 총 거리")}
+      ${kpiCard("이번 달 마일리지", `${fmtNum(thisMonthKm, 1)} km`, monthLabel(currentMonthKey()))}
       ${kpiCard("거리 달성률", `${fmtNum(s.distance_rate_pct, 1)}%`, `${fmtNum(s.actual_km_until_today, 1)} / ${fmtNum(s.planned_km_until_today, 1)} km`)}
       ${kpiCard("실행률", `${fmtNum(s.execution_rate_pct, 1)}%`, `${s.done_count || 0} / ${s.planned_count || 0}`)}
     </div>
@@ -356,6 +443,11 @@ function renderDashboard() {
           <p>${safe(nextPlan.workout || "")}</p>
           <button class="primary-btn" type="button" data-action="open-log" data-plan-id="${nextPlan.id}" data-date="${nextPlan.plan_date}">이 훈련 입력</button>
         </div>` : `<p class="empty">예정된 훈련이 없습니다.</p>`}
+    </section>
+    <section class="card">
+      <div class="section-title"><h2>월 마일리지</h2></div>
+      <p class="muted">본인이 입력한 실제 거리 기준으로 월별 마일리지를 집계합니다.</p>
+      ${monthlyMileageHtml()}
     </section>
   `;
 }
@@ -551,11 +643,23 @@ function renderAdmin() {
     </section>
 
     <section class="card">
+      <div class="section-title"><h2>훈련표 관리</h2><button class="primary-btn" type="button" data-action="admin-open-plan-new">훈련 추가</button></div>
+      <p class="muted">관리자는 웹앱에서 훈련 날짜, 종류, 거리, 훈련 내용, 페이스, 메모를 바로 수정할 수 있습니다. 저장하면 회원 화면에도 즉시 반영됩니다.</p>
+      <div class="plan-filters">
+        ${adminPlanFilterButton("week", "이번 주")}
+        ${adminPlanFilterButton("upcoming", "다가오는 30개")}
+        ${adminPlanFilterButton("all", "전체")}
+      </div>
+      <div class="admin-plan-list">${adminPlanCards()}</div>
+    </section>
+
+    <section class="card">
       <div class="section-title"><h2>전체 현황</h2></div>
       <div class="csv-actions">
         <button class="small-btn" type="button" data-action="download-csv" data-csv="summary">현황 CSV</button>
         <button class="small-btn" type="button" data-action="download-csv" data-csv="profiles">회원정보 CSV</button>
         <button class="small-btn" type="button" data-action="download-csv" data-csv="logs">기록 CSV</button>
+        <button class="small-btn" type="button" data-action="download-csv" data-csv="plans">훈련표 CSV</button>
       </div>
       <div class="table-wrap">${summaryTable()}</div>
     </section>
@@ -570,6 +674,111 @@ function renderAdmin() {
       <div class="table-wrap">${logsTable()}</div>
     </section>
   `;
+}
+
+
+function adminPlanFilterButton(value, label) {
+  return `<button class="small-btn" type="button" data-action="admin-plan-filter" data-filter="${value}" ${state.adminPlanFilter === value ? "style='background:#0f766e;color:white'" : ""}>${label}</button>`;
+}
+
+function adminPlanCards() {
+  const [weekStart, weekEnd] = weekRange();
+  let list = [...state.plan];
+  if (state.adminPlanFilter === "week") list = list.filter((item) => item.plan_date >= weekStart && item.plan_date <= weekEnd);
+  if (state.adminPlanFilter === "upcoming") list = list.filter((item) => item.plan_date >= today()).slice(0, 30);
+  if (!list.length) return `<p class="empty">표시할 훈련표가 없습니다.</p>`;
+  return list.map((item) => `
+    <article class="plan-card ${item.plan_date === today() ? "today" : ""}">
+      <div class="plan-head">
+        <div>
+          <div class="plan-date">${fmtDate(item.plan_date)} (${safe(item.day_name || "")}) · ${safe(item.phase || "")}</div>
+          <div class="plan-title">${safe(item.workout_type || "훈련")}</div>
+        </div>
+        <span class="pill">${fmtNum(item.planned_km, 1)}km</span>
+      </div>
+      <div class="plan-meta">
+        <span class="pill gray">${safe(item.division || "")}</span>
+        <span class="pill gray">${safe(String(item.week_no ?? ""))}주차</span>
+      </div>
+      <p>${safe(item.workout || "")}</p>
+      ${item.pace_guide ? `<p class="muted"><b>페이스</b> ${safe(item.pace_guide)}</p>` : ""}
+      ${item.coach_note ? `<p class="muted"><b>메모</b> ${safe(item.coach_note)}</p>` : ""}
+      <div class="form-actions">
+        <button class="small-btn" type="button" data-action="admin-open-plan-edit" data-plan-id="${item.id}">수정</button>
+      </div>
+    </article>`).join("");
+}
+
+function dayNameFromDate(dateStr) {
+  if (!dateStr) return "";
+  const names = ["일", "월", "화", "수", "목", "금", "토"];
+  const d = new Date(`${dateStr}T00:00:00`);
+  return names[d.getDay()] || "";
+}
+
+function openPlanEditor(planId) {
+  if (state.member?.role !== "admin") return toast("관리자 권한이 필요합니다.");
+  const plan = planId ? state.plan.find((item) => item.id === planId) : null;
+  document.querySelector("#plan-dialog-title").textContent = plan ? "훈련표 수정" : "훈련 추가";
+  document.querySelector("#plan-id").value = plan?.id || "";
+  document.querySelector("#plan-week-no").value = plan?.week_no ?? "";
+  document.querySelector("#plan-phase").value = plan?.phase || "";
+  document.querySelector("#plan-date").value = plan?.plan_date || today();
+  document.querySelector("#plan-day-name").value = plan?.day_name || dayNameFromDate(plan?.plan_date || today());
+  document.querySelector("#plan-division").value = plan?.division || "";
+  document.querySelector("#plan-workout-type").value = plan?.workout_type || "";
+  document.querySelector("#plan-planned-km").value = plan?.planned_km ?? 0;
+  document.querySelector("#plan-workout").value = plan?.workout || "";
+  document.querySelector("#plan-pace-guide").value = plan?.pace_guide || "";
+  document.querySelector("#plan-coach-note").value = plan?.coach_note || "";
+  document.querySelector("#plan-delete-btn")?.classList.toggle("hidden", !plan);
+  document.querySelector("#plan-dialog").showModal();
+}
+
+async function adminSavePlan(button) {
+  if (state.member?.role !== "admin") throw new Error("관리자 권한이 필요합니다.");
+  const payload = {
+    p_token: state.token,
+    p_plan_id: document.querySelector("#plan-id").value || null,
+    p_week_no: Number(document.querySelector("#plan-week-no").value || 0),
+    p_phase: document.querySelector("#plan-phase").value.trim(),
+    p_plan_date: document.querySelector("#plan-date").value,
+    p_day_name: document.querySelector("#plan-day-name").value.trim() || dayNameFromDate(document.querySelector("#plan-date").value),
+    p_division: document.querySelector("#plan-division").value.trim(),
+    p_workout_type: document.querySelector("#plan-workout-type").value.trim(),
+    p_planned_km: Number(document.querySelector("#plan-planned-km").value || 0),
+    p_workout: document.querySelector("#plan-workout").value.trim(),
+    p_pace_guide: document.querySelector("#plan-pace-guide").value.trim(),
+    p_coach_note: document.querySelector("#plan-coach-note").value.trim()
+  };
+  if (!payload.p_plan_date) throw new Error("훈련 날짜를 입력해주세요.");
+  if (payload.p_planned_km < 0) throw new Error("계획 거리는 0 이상이어야 합니다.");
+  button.disabled = true;
+  try {
+    await rpc("admin_save_plan", payload);
+    document.querySelector("#plan-dialog")?.close();
+    await refreshAll(false);
+    toast("훈련표 저장 완료");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function adminDeletePlan(button) {
+  if (state.member?.role !== "admin") throw new Error("관리자 권한이 필요합니다.");
+  const planId = document.querySelector("#plan-id").value;
+  if (!planId) return;
+  const plan = state.plan.find((item) => item.id === planId);
+  if (!confirm(`${fmtDate(plan?.plan_date)} 훈련표를 삭제할까요?\n회원이 이미 입력한 기록은 개인 기록으로 남고, 훈련표 연결만 해제됩니다.`)) return;
+  button.disabled = true;
+  try {
+    await rpc("admin_delete_plan", { p_token: state.token, p_plan_id: planId });
+    document.querySelector("#plan-dialog")?.close();
+    await refreshAll(false);
+    toast("훈련표 삭제 완료");
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function adminCreateMember(button) {
@@ -622,6 +831,9 @@ function downloadCsv(type) {
   } else if (type === "logs") {
     rows = state.admin.logs;
     filename = "gobuk_logs.csv";
+  } else if (type === "plans") {
+    rows = state.plan;
+    filename = "gobuk_training_plan.csv";
   }
   if (!rows.length) return toast("내보낼 데이터가 없습니다.");
   const headers = Object.keys(rows[0]);
