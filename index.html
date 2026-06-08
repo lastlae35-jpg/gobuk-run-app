@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>거북팀 훈련 입력 웹앱</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <section class="boot-card">
+      <div class="spinner"></div>
+      <p>거북팀 훈련장을 여는 중...</p>
+    </section>
+  </div>
+
+  <template id="login-template">
+    <main class="login-page">
+      <section class="hero-card">
+        <div class="badge">GOBUK RUN</div>
+        <h1>거북팀 훈련 입력</h1>
+        <p>이름과 앱 전용 비밀번호로 로그인하고, 내 훈련·누적거리·실행률·개인정보를 관리합니다.</p>
+      </section>
+
+      <section id="config-warning" class="card warning-card hidden">
+        <b>Supabase 설정이 필요합니다.</b>
+        <p><code>config.js</code> 파일에 Project URL과 anon/public key를 넣어주세요.</p>
+      </section>
+
+      <section class="card auth-card">
+        <div class="auth-switch" role="tablist" aria-label="로그인 또는 회원가입 선택">
+          <button class="auth-tab active" type="button" data-auth-tab="login">로그인</button>
+          <button class="auth-tab" type="button" data-auth-tab="signup">회원가입</button>
+        </div>
+
+        <form id="login-form" class="auth-panel active">
+          <label>
+            이름
+            <input id="login-name" autocomplete="username" placeholder="예: 김거북" required />
+          </label>
+          <label>
+            비밀번호
+            <input id="login-password" type="password" autocomplete="current-password" placeholder="비밀번호" required />
+          </label>
+          <button class="primary-btn" type="submit">로그인</button>
+          <p class="hint">최초 관리자: <b>관리자 / 1234</b></p>
+        </form>
+
+        <form id="signup-form" class="auth-panel">
+          <label>
+            이름
+            <input id="signup-name" autocomplete="username" placeholder="예: 김거북" required />
+          </label>
+          <label>
+            비밀번호
+            <input id="signup-password" type="password" autocomplete="new-password" placeholder="이 앱 전용 비밀번호" required minlength="4" />
+          </label>
+          <label>
+            비밀번호 확인
+            <input id="signup-password-confirm" type="password" autocomplete="new-password" placeholder="한 번 더 입력" required minlength="4" />
+          </label>
+          <div class="security-notice">
+            <b>가입 전 꼭 확인해주세요.</b>
+            <p>비밀번호는 절대 다른 사이트 비밀번호와 다르게 쓰셔야 합니다. 단순 기록 저장을 위한 어플이니 보안에 취약할 수 있습니다. 절대 개인정보는 넣지 않습니다.</p>
+          </div>
+          <label class="check-label">
+            <input id="signup-security-check" type="checkbox" required />
+            <span>위 안내를 확인했고, 이 앱 전용 비밀번호를 사용하겠습니다.</span>
+          </label>
+          <button class="primary-btn" type="submit">회원가입 후 시작</button>
+          <p class="hint">가입자는 자동으로 일반회원입니다. 관리자 권한은 직접 가입으로 받을 수 없습니다.</p>
+        </form>
+      </section>
+    </main>
+  </template>
+
+  <template id="main-template">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">거북팀 4시간 20분 언더</p>
+        <h1 id="hello-title">훈련 대시보드</h1>
+      </div>
+      <button class="ghost-btn" type="button" data-action="logout">로그아웃</button>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" type="button" data-view="dashboard">내 현황</button>
+      <button class="tab" type="button" data-view="profile">내 정보</button>
+      <button class="tab" type="button" data-view="plan">훈련표</button>
+      <button class="tab" type="button" data-view="logs">내 기록</button>
+      <button class="tab admin-only hidden" type="button" data-view="admin">관리자</button>
+    </nav>
+
+    <main>
+      <section id="view-dashboard" class="view active"></section>
+      <section id="view-profile" class="view"></section>
+      <section id="view-plan" class="view"></section>
+      <section id="view-logs" class="view"></section>
+      <section id="view-admin" class="view"></section>
+    </main>
+
+    <dialog id="log-dialog" class="log-dialog">
+      <form method="dialog" id="log-form" class="dialog-card">
+        <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+        <h2>훈련 기록 입력</h2>
+        <p id="log-plan-title" class="muted"></p>
+        <input type="hidden" id="log-plan-id" />
+        <label>
+          날짜
+          <input type="date" id="log-date" required />
+        </label>
+        <label>
+          실행상태
+          <select id="log-status">
+            <option value="done">완료</option>
+            <option value="partial">일부 완료</option>
+            <option value="rest">휴식</option>
+            <option value="skipped">미실시</option>
+          </select>
+        </label>
+        <label>
+          실제 km
+          <input type="number" id="log-km" min="0" step="0.01" inputmode="decimal" placeholder="예: 8.5" />
+        </label>
+        <label>
+          메모
+          <textarea id="log-memo" rows="3" placeholder="컨디션, 심박, 통증, 보급 등을 적어주세요."></textarea>
+        </label>
+        <button class="primary-btn" type="submit" value="save">저장</button>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast hidden"></div>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
