@@ -294,6 +294,12 @@ function bindShellEvents() {
     if (dayInput && event.target.value) dayInput.value = dayNameFromDate(event.target.value);
   });
 
+  document.querySelectorAll("dialog").forEach((dialog) => {
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  });
+
   if (!globalClickBound) {
     document.addEventListener("click", handleGlobalClick);
     globalClickBound = true;
@@ -315,6 +321,13 @@ async function handleGlobalClick(event) {
 
     if (action === "open-log") {
       openLogDialog(button.dataset.planId || null, button.dataset.date || today());
+      return;
+    }
+
+    if (action === "close-dialog") {
+      const dialogId = button.dataset.dialog;
+      const dialog = dialogId ? document.querySelector(`#${dialogId}`) : button.closest("dialog");
+      dialog?.close();
       return;
     }
 
