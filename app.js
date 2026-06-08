@@ -356,6 +356,16 @@ async function handleGlobalClick(event) {
       return;
     }
 
+    if (action === "admin-delete-member") {
+      await adminDeleteMember(button);
+      return;
+    }
+
+    if (action === "admin-save-comment") {
+      await adminSaveComment(button);
+      return;
+    }
+
     if (action === "admin-plan-filter") {
       state.adminPlanFilter = button.dataset.filter || "week";
       renderAdmin();
@@ -580,6 +590,7 @@ function planCard(item) {
       <p>${safe(item.workout || "")}</p>
       ${item.pace_guide ? `<p class="muted"><b>페이스</b> ${safe(item.pace_guide)}</p>` : ""}
       ${item.coach_note ? `<p class="muted"><b>메모</b> ${safe(item.coach_note)}</p>` : ""}
+      ${existing?.admin_comment ? `<div class="admin-feedback"><b>관리자 멘트</b><p>${safe(existing.admin_comment)}</p></div>` : ""}
       <button class="primary-btn" type="button" data-action="open-log" data-plan-id="${item.id}" data-date="${item.plan_date}">${existing ? "기록 수정" : "기록 입력"}</button>
     </article>
   `;
@@ -635,12 +646,93 @@ function logCard(log) {
       </div>
       <div class="plan-meta"><span class="status-${safe(log.status)}">${STATUS_LABELS[log.status] || log.status}</span>${log.planned_km ? `<span class="pill gray">계획 ${fmtNum(log.planned_km, 1)}km</span>` : ""}</div>
       ${log.memo ? `<p>${safe(log.memo)}</p>` : ""}
+      ${log.admin_comment ? `<div class="admin-feedback"><b>관리자 멘트</b><p>${safe(log.admin_comment)}</p>${log.admin_comment_updated_at ? `<span>${safe(String(log.admin_comment_updated_at).slice(0, 10))}</span>` : ""}</div>` : ""}
       <div class="form-actions">
         <button class="small-btn" type="button" data-action="open-log" data-plan-id="${log.plan_id || ""}" data-date="${log.log_date}">수정</button>
         <button class="danger-btn" type="button" data-action="delete-log" data-log-id="${log.id}">삭제</button>
       </div>
     </article>
   `;
+}
+
+
+function adminMonthlyKm(memberId, key = currentMonthKey()) {
+  return state.admin.logs
+    .filter((log) => String(log.member_id) === String(memberId) && monthKey(log.log_date) === key)
+    .reduce((sum, log) => sum + Number(log.actual_km || 0), 0);
+}
+
+function adminMonthlyCount(memberId, key = currentMonthKey()) {
+  return state.admin.logs
+    .filter((log) => String(log.member_id) === String(memberId) && monthKey(log.log_date) === key && Number(log.actual_km || 0) > 0)
+    .length;
+}
+
+function latestLogForMember(memberId) {
+  return state.admin.logs.find((log) => String(log.member_id) === String(memberId));
+}
+
+function profileForMember(memberId) {
+  return state.admin.profiles.find((profile) => String(profile.member_id) === String(memberId)) || {};
+}
+
+function adminMemberStatusCards() {
+  const rows = state.admin.summary || [];
+  if (!rows.length) return `<p class="empty">표시할 회원 현황이 없습니다.</p>`;
+  return `
+    <div class="member-status-grid">
+      ${rows.map((row) => {
+        const latest = latestLogForMember(row.member_id);
+        const profile = profileForMember(row.member_id);
+        const monthKm = adminMonthlyKm(row.member_id);
+        const monthCount = adminMonthlyCount(row.member_id);
+        const riskText = [profile.pain_yn, profile.current_pain].filter(Boolean).join(" · ");
+        return `
+          <article class="member-status-card">
+            <div class="member-status-head">
+              <div>
+                <div class="member-name">${safe(row.name)} ${row.role === "admin" ? "<span class='mini-badge'>관리자</span>" : ""}</div>
+                <div class="muted small-text">${safe(profile.goal_record || "목표기록 미입력")}</div>
+              </div>
+              <span class="pill">이번 달 ${fmtNum(monthKm, 1)}km</span>
+            </div>
+            <div class="member-status-metrics">
+              <div><b>${fmtNum(row.total_km, 1)}km</b><span>총 누적</span></div>
+              <div><b>${fmtNum(row.distance_rate_pct, 1)}%</b><span>거리 달성률</span></div>
+              <div><b>${fmtNum(row.execution_rate_pct, 1)}%</b><span>실행률</span></div>
+              <div><b>${row.done_count || 0}/${row.planned_count || 0}</b><span>완료/계획</span></div>
+            </div>
+            <div class="member-status-foot">
+              <span>월 입력 ${monthCount}회</span>
+              <span>최근 ${latest?.log_date ? fmtDate(latest.log_date) : "기록 없음"}</span>
+              ${latest ? `<span>${safe(latest.status_label || STATUS_LABELS[latest.status] || latest.status)} · ${fmtNum(latest.actual_km, 1)}km</span>` : ""}
+            </div>
+            ${latest?.admin_comment ? `<p class="member-admin-comment"><b>최근 관리자 멘트</b> ${safe(latest.admin_comment)}</p>` : ""}
+            ${riskText ? `<p class="member-risk"><b>통증/체크</b> ${safe(riskText)}</p>` : ""}
+          </article>`;
+      }).join("")}
+    </div>`;
+}
+
+function adminMemberStatusTable() {
+  const rows = (state.admin.summary || []).map((row) => {
+    const latest = latestLogForMember(row.member_id);
+    const profile = profileForMember(row.member_id);
+    return `
+      <tr>
+        <td>${safe(row.name)}</td>
+        <td>${fmtNum(row.total_km, 1)}km</td>
+        <td>${fmtNum(adminMonthlyKm(row.member_id), 1)}km</td>
+        <td>${fmtNum(row.distance_rate_pct, 1)}%</td>
+        <td>${fmtNum(row.execution_rate_pct, 1)}%</td>
+        <td>${row.done_count || 0}/${row.planned_count || 0}</td>
+        <td>${latest?.log_date ? fmtDate(latest.log_date) : "-"}</td>
+        <td>${latest ? `${safe(latest.status_label || STATUS_LABELS[latest.status] || latest.status)} / ${fmtNum(latest.actual_km, 1)}km` : "-"}</td>
+        <td>${safe(latest?.admin_comment || "")}</td>
+        <td>${safe(profile.pain_yn || "")}${profile.current_pain ? ` · ${safe(profile.current_pain)}` : ""}</td>
+      </tr>`;
+  }).join("");
+  return `<div class="table-wrap"><table><thead><tr><th>이름</th><th>총 누적</th><th>이번 달</th><th>거리달성률</th><th>실행률</th><th>완료/계획</th><th>최근기록일</th><th>최근내용</th><th>관리자 멘트</th><th>통증/체크</th></tr></thead><tbody>${rows || `<tr><td colspan="10">회원 현황이 없습니다.</td></tr>`}</tbody></table></div>`;
 }
 
 function renderAdmin() {
@@ -656,6 +748,12 @@ function renderAdmin() {
     </section>
 
     <section class="card">
+      <div class="section-title"><h2>회원 관리</h2></div>
+      <p class="muted">회원 삭제 시 해당 회원의 훈련기록, 내 정보, 로그인 세션이 함께 삭제됩니다. 본인 관리자 계정은 삭제할 수 없습니다.</p>
+      <div class="table-wrap">${membersTable()}</div>
+    </section>
+
+    <section class="card">
       <div class="section-title"><h2>훈련표 관리</h2><button class="primary-btn" type="button" data-action="admin-open-plan-new">훈련 추가</button></div>
       <p class="muted">관리자는 웹앱에서 훈련 날짜, 종류, 거리, 훈련 내용, 페이스, 메모를 바로 수정할 수 있습니다. 저장하면 회원 화면에도 즉시 반영됩니다.</p>
       <div class="plan-filters">
@@ -664,6 +762,19 @@ function renderAdmin() {
         ${adminPlanFilterButton("all", "전체")}
       </div>
       <div class="admin-plan-list">${adminPlanCards()}</div>
+    </section>
+
+    <section class="card">
+      <div class="section-title"><h2>회원 현재 현황</h2></div>
+      <p class="muted">회원별 총 누적거리, 이번 달 마일리지, 거리 달성률, 실행률, 최근 기록, 통증 체크를 한눈에 봅니다.</p>
+      ${adminMemberStatusCards()}
+      ${adminMemberStatusTable()}
+    </section>
+
+    <section class="card">
+      <div class="section-title"><h2>훈련 멘트</h2></div>
+      <p class="muted">회원이 입력한 훈련 기록에 관리자 멘트를 남길 수 있습니다. 저장된 멘트는 해당 회원의 내 기록과 훈련표 입력 카드에 표시됩니다.</p>
+      ${adminCommentCards()}
     </section>
 
     <section class="card">
@@ -689,6 +800,82 @@ function renderAdmin() {
   `;
 }
 
+
+function adminCommentCards() {
+  const logs = state.admin.logs.slice(0, 50);
+  if (!logs.length) return `<p class="empty">멘트를 남길 훈련 기록이 없습니다.</p>`;
+  return `
+    <div class="admin-comment-list">
+      ${logs.map((log) => `
+        <article class="admin-comment-card">
+          <div class="admin-comment-head">
+            <div>
+              <div class="member-name">${safe(log.member_name)} · ${fmtDate(log.log_date)}</div>
+              <div class="muted small-text">${safe(log.status_label || STATUS_LABELS[log.status] || log.status)} · ${fmtNum(log.actual_km, 1)}km · ${safe(log.workout_type || "개인 훈련")}</div>
+            </div>
+            <span class="pill">${fmtNum(log.planned_km, 1)}km 계획</span>
+          </div>
+          ${log.memo ? `<p class="member-log-memo"><b>회원 메모</b> ${safe(log.memo)}</p>` : `<p class="muted small-text">회원 메모 없음</p>`}
+          <label class="wide">관리자 멘트
+            <textarea rows="3" data-comment-input="${log.log_id}" placeholder="예: 오늘은 거리보다 꾸준히 수행한 점이 좋았습니다. 다음 LSD는 6'40 전후로 편하게 가세요.">${safe(log.admin_comment || "")}</textarea>
+          </label>
+          <div class="form-actions">
+            <button class="small-btn" type="button" data-action="admin-save-comment" data-log-id="${log.log_id}">멘트 저장</button>
+          </div>
+        </article>`).join("")}
+    </div>`;
+}
+
+async function adminSaveComment(button) {
+  if (state.member?.role !== "admin") throw new Error("관리자 권한이 필요합니다.");
+  const logId = button.dataset.logId;
+  const input = document.querySelector(`[data-comment-input="${logId}"]`);
+  if (!logId || !input) return;
+  const comment = input.value.trim();
+  button.disabled = true;
+  try {
+    await rpc("admin_save_log_comment", { p_token: state.token, p_log_id: logId, p_admin_comment: comment });
+    await refreshAll(false);
+    toast(comment ? "관리자 멘트 저장 완료" : "관리자 멘트 삭제 완료");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+
+function membersTable() {
+  const rows = state.admin.members.map((member) => {
+    const isMe = String(member.id) === String(state.member?.id);
+    return `
+      <tr>
+        <td>${safe(member.name)}</td>
+        <td>${safe(member.role === "admin" ? "관리자" : "일반회원")}</td>
+        <td>${member.created_at ? fmtDate(String(member.created_at).slice(0, 10)) : "-"}</td>
+        <td>
+          ${isMe
+            ? `<span class="muted">본인 계정</span>`
+            : `<button class="danger-btn tiny-btn" type="button" data-action="admin-delete-member" data-member-id="${member.id}" data-member-name="${safe(member.name)}">회원 삭제</button>`}
+        </td>
+      </tr>`;
+  }).join("");
+  return `<table><thead><tr><th>이름</th><th>권한</th><th>가입일</th><th>관리</th></tr></thead><tbody>${rows || `<tr><td colspan="4">회원이 없습니다.</td></tr>`}</tbody></table>`;
+}
+
+async function adminDeleteMember(button) {
+  if (state.member?.role !== "admin") throw new Error("관리자 권한이 필요합니다.");
+  const memberId = button.dataset.memberId;
+  const memberName = button.dataset.memberName || "선택한 회원";
+  if (!memberId) return;
+  if (!confirm(`${memberName} 회원을 삭제할까요?\n해당 회원의 훈련기록과 내 정보도 함께 삭제됩니다. 이 작업은 되돌릴 수 없습니다.`)) return;
+  button.disabled = true;
+  try {
+    await rpc("admin_delete_member", { p_token: state.token, p_member_id: memberId });
+    await refreshAll(false);
+    toast("회원 삭제 완료");
+  } finally {
+    button.disabled = false;
+  }
+}
 
 function adminPlanFilterButton(value, label) {
   return `<button class="small-btn" type="button" data-action="admin-plan-filter" data-filter="${value}" ${state.adminPlanFilter === value ? "style='background:#0f766e;color:white'" : ""}>${label}</button>`;
@@ -827,9 +1014,9 @@ function profilesTable() {
 
 function logsTable() {
   const rows = state.admin.logs.slice(0, 80).map((row) => `
-    <tr><td>${fmtDate(row.log_date)}</td><td>${safe(row.member_name)}</td><td>${safe(row.status_label || STATUS_LABELS[row.status] || row.status)}</td><td>${fmtNum(row.actual_km, 1)}</td><td>${safe(row.workout_type || "개인")}</td><td>${safe(row.memo || "")}</td></tr>`
+    <tr><td>${fmtDate(row.log_date)}</td><td>${safe(row.member_name)}</td><td>${safe(row.status_label || STATUS_LABELS[row.status] || row.status)}</td><td>${fmtNum(row.actual_km, 1)}</td><td>${safe(row.workout_type || "개인")}</td><td>${safe(row.memo || "")}</td><td>${safe(row.admin_comment || "")}</td></tr>`
   ).join("");
-  return `<table><thead><tr><th>날짜</th><th>이름</th><th>상태</th><th>km</th><th>훈련</th><th>메모</th></tr></thead><tbody>${rows || `<tr><td colspan="6">기록이 없습니다.</td></tr>`}</tbody></table>`;
+  return `<table><thead><tr><th>날짜</th><th>이름</th><th>상태</th><th>km</th><th>훈련</th><th>회원 메모</th><th>관리자 멘트</th></tr></thead><tbody>${rows || `<tr><td colspan="7">기록이 없습니다.</td></tr>`}</tbody></table>`;
 }
 
 function downloadCsv(type) {
