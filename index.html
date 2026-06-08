@@ -131,6 +131,32 @@
       </form>
     </dialog>
 
+    <dialog id="plan-dialog" class="log-dialog">
+      <form method="dialog" id="plan-form" class="dialog-card">
+        <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+        <h2 id="plan-dialog-title">훈련표 수정</h2>
+        <p class="muted">관리자 전용입니다. 저장하면 모든 회원의 훈련표에 바로 반영됩니다.</p>
+        <input type="hidden" id="plan-id" />
+        <div class="form-grid">
+          <label>날짜<input type="date" id="plan-date" required /></label>
+          <label>요일<input id="plan-day-name" placeholder="예: 화" /></label>
+          <label>주차<input type="number" id="plan-week-no" min="0" step="1" placeholder="예: 3" /></label>
+          <label>단계/기간<input id="plan-phase" placeholder="예: 1단계 적응기" /></label>
+          <label>구분<input id="plan-division" placeholder="예: 화요일 포인트 / 일요일 LSD" /></label>
+          <label>훈련 종류<input id="plan-workout-type" placeholder="예: MP주, 빌드업, LSD" /></label>
+          <label>계획 km<input type="number" id="plan-planned-km" min="0" step="0.1" inputmode="decimal" placeholder="예: 12" /></label>
+          <label class="wide">훈련 내용<textarea id="plan-workout" rows="3" placeholder="예: 워밍업 2km + MP 8km + 쿨다운 2km"></textarea></label>
+          <label class="wide">페이스 가이드<textarea id="plan-pace-guide" rows="2" placeholder="예: MP 6'05~6'15/km"></textarea></label>
+          <label class="wide">관리자 메모<textarea id="plan-coach-note" rows="2" placeholder="예: 무리하지 말고 후반 페이스 유지"></textarea></label>
+        </div>
+        <div class="form-actions">
+          <button id="plan-delete-btn" class="danger-btn hidden" type="button" data-action="admin-delete-plan">훈련 삭제</button>
+          <button class="ghost-btn" type="submit" value="cancel">취소</button>
+          <button class="primary-btn" type="button" data-action="admin-save-plan">저장</button>
+        </div>
+      </form>
+    </dialog>
+
     <div id="toast" class="toast hidden"></div>
   </template>
 
