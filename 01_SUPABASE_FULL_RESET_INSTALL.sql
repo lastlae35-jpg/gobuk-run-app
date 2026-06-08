@@ -2604,3 +2604,112 @@ $seed$::jsonb) as x(
 select '설치 완료' as status,
        (select count(*) from training_plan) as training_plan_count,
        (select count(*) from app_members) as member_count;
+-- 관리자 웹앱 훈련표 수정/추가/삭제 기능 패치 SQL
+-- 기존 데이터는 삭제하지 않습니다.
+-- Supabase > SQL Editor > New query 에 전체 붙여넣고 Run 하세요.
+
+create or replace function admin_save_plan(
+  p_token uuid,
+  p_plan_id uuid,
+  p_week_no int,
+  p_phase text,
+  p_plan_date date,
+  p_day_name text,
+  p_division text,
+  p_workout_type text,
+  p_planned_km numeric,
+  p_workout text,
+  p_pace_guide text,
+  p_coach_note text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_plan training_plan%rowtype;
+  v_day text;
+  v_planned numeric := coalesce(p_planned_km, 0);
+begin
+  perform require_admin(p_token);
+
+  if p_plan_date is null then
+    raise exception '훈련 날짜를 입력해주세요.';
+  end if;
+
+  if v_planned < 0 then
+    raise exception '계획 거리는 0 이상이어야 합니다.';
+  end if;
+
+  v_day := coalesce(nullif(trim(p_day_name), ''),
+    case extract(dow from p_plan_date)::int
+      when 0 then '일'
+      when 1 then '월'
+      when 2 then '화'
+      when 3 then '수'
+      when 4 then '목'
+      when 5 then '금'
+      when 6 then '토'
+    end
+  );
+
+  if p_plan_id is null then
+    insert into training_plan(
+      week_no, phase, plan_date, day_name, division, workout_type, planned_km, workout, pace_guide, coach_note
+    ) values (
+      coalesce(p_week_no, 0), nullif(trim(p_phase), ''), p_plan_date, v_day, nullif(trim(p_division), ''),
+      nullif(trim(p_workout_type), ''), v_planned, nullif(trim(p_workout), ''), nullif(trim(p_pace_guide), ''), nullif(trim(p_coach_note), '')
+    )
+    returning * into v_plan;
+  else
+    update training_plan
+    set
+      week_no = coalesce(p_week_no, week_no),
+      phase = nullif(trim(p_phase), ''),
+      plan_date = p_plan_date,
+      day_name = v_day,
+      division = nullif(trim(p_division), ''),
+      workout_type = nullif(trim(p_workout_type), ''),
+      planned_km = v_planned,
+      workout = nullif(trim(p_workout), ''),
+      pace_guide = nullif(trim(p_pace_guide), ''),
+      coach_note = nullif(trim(p_coach_note), '')
+    where id = p_plan_id
+    returning * into v_plan;
+
+    if not found then
+      raise exception '수정할 훈련표를 찾을 수 없습니다.';
+    end if;
+  end if;
+
+  return to_jsonb(v_plan);
+end;
+$$;
+
+create or replace function admin_delete_plan(p_token uuid, p_plan_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count int;
+begin
+  perform require_admin(p_token);
+
+  delete from training_plan
+  where id = p_plan_id;
+
+  get diagnostics v_count = row_count;
+
+  if v_count = 0 then
+    raise exception '삭제할 훈련표가 없습니다.';
+  end if;
+
+  return true;
+end;
+$$;
+
+grant execute on function admin_save_plan(uuid, uuid, int, text, date, text, text, text, numeric, text, text, text) to anon, authenticated;
+grant execute on function admin_delete_plan(uuid, uuid) to anon, authenticated;
