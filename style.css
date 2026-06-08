@@ -265,3 +265,30 @@ tr:last-child td { border-bottom: 0; }
   .card { padding: 15px; }
   .plan-head, .log-head { display: grid; }
 }
+
+.admin-plan-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+#plan-dialog .dialog-card {
+  max-height: min(88dvh, 820px);
+  overflow: auto;
+}
+
+.highlight-row td {
+  font-weight: 800;
+  background: #ecfdf5;
+}
+
+.mini-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #0f766e;
+  color: white;
+  font-size: 11px;
+  vertical-align: middle;
+}
