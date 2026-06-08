@@ -102,7 +102,7 @@
 
     <dialog id="log-dialog" class="log-dialog">
       <form method="dialog" id="log-form" class="dialog-card">
-        <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+        <button class="dialog-close" type="button" data-action="close-dialog" data-dialog="log-dialog" aria-label="닫기">×</button>
         <h2>훈련 기록 입력</h2>
         <p id="log-plan-title" class="muted"></p>
         <input type="hidden" id="log-plan-id" />
@@ -127,13 +127,16 @@
           메모
           <textarea id="log-memo" rows="3" placeholder="컨디션, 심박, 통증, 보급 등을 적어주세요."></textarea>
         </label>
-        <button class="primary-btn" type="submit" value="save">저장</button>
+        <div class="form-actions">
+          <button class="ghost-btn" type="button" data-action="close-dialog" data-dialog="log-dialog">닫기</button>
+          <button class="primary-btn" type="submit" value="save">저장</button>
+        </div>
       </form>
     </dialog>
 
     <dialog id="plan-dialog" class="log-dialog">
       <form method="dialog" id="plan-form" class="dialog-card">
-        <button class="dialog-close" value="cancel" aria-label="닫기">×</button>
+        <button class="dialog-close" type="button" data-action="close-dialog" data-dialog="plan-dialog" aria-label="닫기">×</button>
         <h2 id="plan-dialog-title">훈련표 수정</h2>
         <p class="muted">관리자 전용입니다. 저장하면 모든 회원의 훈련표에 바로 반영됩니다.</p>
         <input type="hidden" id="plan-id" />
@@ -151,7 +154,7 @@
         </div>
         <div class="form-actions">
           <button id="plan-delete-btn" class="danger-btn hidden" type="button" data-action="admin-delete-plan">훈련 삭제</button>
-          <button class="ghost-btn" type="submit" value="cancel">취소</button>
+          <button class="ghost-btn" type="button" data-action="close-dialog" data-dialog="plan-dialog">취소</button>
           <button class="primary-btn" type="button" data-action="admin-save-plan">저장</button>
         </div>
       </form>
